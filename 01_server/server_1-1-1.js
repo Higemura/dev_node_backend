@@ -1,12 +1,13 @@
-// 1.1.0 サーバーを起動する
+// 1.1.1 複数階層コンテンツのルーティング
 
 const http = require('http');
-const path = require('path');
+// const path = require('path'); // path変数は必要ない為削除
 
 const pages = [
-  { route: '', output: 'index page' },
-  { route: 'about', output: 'about page' },
-  { route: 'another', output: function() { return `これが ${this.route}` }}
+  { route: '/', output: 'index page' }, // ''だったrouteに'/'を追加 
+  { route: '/about/this', output: 'about this page' },
+  { route: '/about/node', output: 'about node page' },
+  { route: '/another', output: function() { return `これが ${this.route}` }}
 ];
 
 const head = {
@@ -14,9 +15,8 @@ const head = {
 }
 
 http.createServer(function (request, response) {
-  const lookup = path.basename(decodeURI(request.url));
+  const lookup = decodeURI(request.url);  // 変更
   pages.forEach(function(page) {
-    console.log(page.route);
     if (page.route === lookup) {
       response.writeHead(200, head);
       response.end(typeof page.output === 'function' ? page.output(): page.output);

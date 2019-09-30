@@ -172,7 +172,7 @@ http.createServer(function (request, response) {
 
 
 ### 1.2.0 スタティックファイルを配信する
-サーバーのファイルシステムに格納されて居る情報をコンテンツとして逢新したい場合にはfsモジュールを利用してコンテンツを取得し、createServerのコールバックを通して配信できます。
+サーバーのファイルシステムに格納されて居る情報をコンテンツとして配信したい場合にはfsモジュールを利用してコンテンツを取得し、createServerのコールバックを通して配信できます。
 
 まずはserver.jsというファイルを作成しておきます。
 そしてserver.jsと同じディレクトリにpublicというディレクトリを作成し以下の3つのファイルを作成しておきます。
@@ -255,13 +255,13 @@ const mimeTypes = {
 
 
 ```
-http.createServer(function (request, response) {
+http.createServer((request, response) => {
   const lookup = path.basename(decodeURI(request.url)) || 'index.html';
   const f = `public/${lookup}`;
-  fs.exists(f, function (exists) {
+  fs.exists(f, (exists) => {
     console.log(exists ? `${lookup}は存在します` : `${lookup}は存在しません`);
     if (exists) {
-      fs.readFile(f, function (error, data) {
+      fs.readFile(f, (error, data) => {
         // この中でコンテンツ配信とエラーハンドリングをする
       });
       return;
@@ -276,6 +276,19 @@ http.createServer(function (request, response) {
 コンテンツ配信をするためにfs.readFileのコールバック関数にレスポンスの生成を入れ込み、コールバック関数に渡されたデータをレスポンスに渡します。
 
 
+
+### 1.2.1 予期しないFaviconリクエストに対応する
+ブラウザを使用してサーバースクリプトをテストする際、予期ないリクエストが送られる場合がある。
+このような場合の多くはブラウザがfavicon.icoのアイコンファイルをリクエストしているもので通常は問題ない。
+もしfaviconが存在しないことで何らかの問題を引き起こす場合は以下のコードを入れる
+
+```
+if (request.url === '/favicon.ico') {
+  response.end();
+  return;
+}
+```
+このコードは空のレスポンスを返すが、ブラウザに対してより礼儀正しく振る舞う場合はresponse.writeHead(404)をresponse.endの前に記述して、404エラーを返すようにする。
 
 
 

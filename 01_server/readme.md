@@ -292,3 +292,83 @@ if (request.url === '/favicon.ico') {
 
 
 
+### 1.3 コンテンツキャッシュによる高速配信
+クライアントがサーバーにアクセスするたびにストレージから直接ファイルを読み込む方法は最適とは言えません。
+今回は、最初のリクエスト時のみストレージに直接アクセスし、メモリにデータをキャッシュすることによって、2回目以降のリクエストに対するコンテンツをメモリから配信する方法を実装します。
+
+コンテンツをメモリ領域に記憶するためのcacheオブジェクトと、cacheAndDliver関数を宣言しておきます。
+cacheAndDliver関数にはfs.readFileと同じパラメーターを設定しておきます。
+こうすることでhttp.createServerの中身のfs.readFileの関数名をcacheAndDliverに変えるだけで他はそのままの状態で置き換えられます。
+
+```
+const head = {
+  'Content-Type': 'text/html; charset=utf-8'
+}
+
+const mimeTypes = {
+  '.js': 'text/javascript',
+  '.html': 'text/html',
+  '.css': 'text/css'
+}
+
+// キャッシュ格納用オブジェクト
+const cache = {};
+
+// キャッシュ生成
+const cacheAndDeliver = (f, cb) => {
+  console.log(cb);
+  if (!cache[f]) {
+    fs.readFile(f, (error, data) => {
+      if (!error) {
+        cache[f] = { content: data };
+      }
+      cb(error, data);
+    });
+    return;
+  }
+  console.log(`${f} をキャッシュから読み込みます。`);
+  cb(null, cache[f].content);
+}
+
+http.createServer((request, response) => {
+  const lookup = path.basename(decodeURI(request.url)) || 'index.html';
+  const f = `public/${lookup}`;
+  fs.exists(f, (exists) => {
+    console.log(exists ? `${lookup}は存在します。` : `${lookup}は存在しません。`);
+    if (exists) {
+      cacheAndDeliver(f, (error, data) => { // 書き換え
+        // この中でコンテンツ配信とエラーハンドリングをする
+        if (error) {
+          response.writeHead(500);
+          response.end('Server Error!');
+          return;
+        }
+        const headers = {'Content-Type': mimeTypes[path.extname(f)]};
+        response.writeHead(200, headers);
+        response.end(data);
+      });
+      return; //returnがfs.readFile関数の外に書いてあることの注意する。 fs.existsがtrueだった場合後に続く404などを実行させないようにreturnを入れている。
+    }
+    response.writeHead(404, head);
+    response.end('ページが見つかりません');
+  });
+}).listen(8080);
+```
+
+
+上記の修正をしたら node server.js でサーバーを起動してみます。
+初回のアクセスは「〜が存在します。」とコンソールに出力されるが、2回目以降のアクセスは「〜をキャッシュから読み込みます。」とコンソールに出力されます。
+
+### 解説
+ファイル名とコールバック関数をパラメーターに持つcacheAndDeliver関数を定義しました。
+関数にfs.readFileと同じパラメーターを設定することにより、fs.readFileのコールバック関数がcacheAndDeliverでもそのまま利用できます。
+したがってコードの体裁を大きく変えずにキャッシュのロジックをそのまま利用できます。
+cacheAndDeliver関数はまずリクエストされたコンテンツがすでにキャッシュに存在するかどうかを確認します。
+最初のリクエストはまだキャッシュに存在しないため、fs.readFileで直接ファイルにアクセスしデータを取得します。
+このデータはレスポンスとしてクライアントに配信されますが、同時にお明日と関連づけられてcacheオブジェクトに格納されます。
+次回誰かが同じコンテンツにリクエストを送った場合、cacheAndDeliverはサイドcacheオブジェクトの中身を確認し、コンテンツがすでにキャッシュされていないかどうかを確認します。
+今度はキャッシュされたコンテンツが存在するため、コールバック関数にキャッシュから取得したコンンテンツを渡します。
+新しいコンテンツを取得するたびにcache[f]にオブジェクト型でコンテンツを格納していることに注目してください。
+こうすることにより将来cache[f]オブジェクトに新しいプロパティを追加することができます。
+そして、新しいプロパティのデータを必要に応じて処理するロジックを追加するだけで、キャッシュの機能を自由に拡張できます。
+

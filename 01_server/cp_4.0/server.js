@@ -1,4 +1,4 @@
-// 1.3.0 コンテンツキャッシュによる高速配信
+// 1.4.0 ストリーミングによりパフォーマンスを最適化する
 
 const http = require('http');
 const path = require('path');
@@ -46,36 +46,37 @@ const cache = {};
 http.createServer((request, response) => {
   const lookup = path.basename(decodeURI(request.url)) || 'index.html';
   const f = `public/${lookup}`;
+
   fs.exists(f, (exists) => {
     if (exists) {
-      const headers = { 'Content-Type': mimeTypes[path.extname(f)] };
+      const headers = { 'Content-Type': `${mimeTypes[path.extname(f)]}; charset=utf-8` };
       if (cache[f]) {
         response.writeHead(200, headers);
-        response.end(data);
+        response.end(cache[f].content);
         return;
       }
+
+      const s = fs.createReadStream(f).once('open', function(f) {
+        response.writeHead(200, headers);
+        this.pipe(response);
+      })
+      .once('error', (e) => {
+        console.log(e);
+        response.writeHead(500);
+        response.end('サーバーエラー！');
+      });
+
+      fs.stat(f, (error, stats) => {
+        let bufferOffset = 0;
+        cache[f] = {content: new Buffer(stats.size)};
+        s.on('data', (data) => {
+          data.copy(cache[f].content, bufferOffset);
+          bufferOffset += data.length;
+        });
+      });
       return;
     }
-  
-    const s = fs.createReadStream(f).once('open', () => {
-      // 以下を追加
-      response.writeHead(200, headers);
-      this.pipe(response);
-    }).once('error', (e) => {
-      console.log(e);
-      response.writeHead(500);
-      response.end('サーバーエラー');
-    });
-
-    fs.stat(f, (error, stats) => {
-      const bufferOffset = 0;
-      cache[f] = { content: new Buffer(stats.size )};
-      s.on('data', (data) => {
-        data.copy(cache[f].content, bufferOffset);
-        bufferOffset += data.length;
-      });
-    });
+    response.writeHead(404);
+		response.end('ページがみつかりません！');
   });
 }).listen(8080);
-
-// このやり方だとクライアントがサーバーにリクエストを送るたびにI/Oコールが発生してしまい、、ファイルが大きい場合にコストがかかる。

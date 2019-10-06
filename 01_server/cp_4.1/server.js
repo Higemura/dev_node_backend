@@ -1,4 +1,4 @@
-// 1.4.0 ストリーミングによりパフォーマンスを最適化する
+// 1.4.1 システムをバッファオーバーフローから守る
 
 const http = require('http');
 const path = require('path');
@@ -15,7 +15,24 @@ const mimeTypes = {
 }
 
 // キャッシュ格納用オブジェクト
-const cache = {};
+const cache = {
+  store: {},
+  maxSize: 26214400, // バイト単位 25MB
+  maxAge: 5400 * 1000, // ミリ秒単位 1.5時間
+  cleanAfter: 7200 * 1000, // ミリ秒単位 2時間
+  cleanedAt: 0, // 動的に設定される
+  clean: function (now) {
+    if (now - this.cleanAfter > this.cleanedAt) {
+      this.cleanedAt = now;
+      const that = this;
+      Object.keys(this.store).forEach(function (file) {
+        if (now > that.store[file].timestamp + that.maxAge) {
+          delete that.store[file];
+        }
+      });
+    }
+  }
+};
 
 http.createServer((request, response) => {
   const lookup = path.basename(decodeURI(request.url)) || 'index.html';
@@ -41,16 +58,20 @@ http.createServer((request, response) => {
       });
 
       fs.stat(f, (error, stats) => {
-        let bufferOffset = 0;
-        cache[f] = {content: new Buffer.alloc(stats.size)};
-        s.on('data', (data) => {
-          data.copy(cache[f].content, bufferOffset);
-          bufferOffset += data.length;
-        });
+        if (stats.size < cache.maxSize) {
+          let bufferOffset = 0;
+          cache[f] = {content: new Buffer.alloc(stats.size), timestamp: Date.now() };
+          s.on('data', (data) => {
+            data.copy(cache.store[f].content, bufferOffset);
+            bufferOffset += data.length;
+          });
+        }
       });
       return;
     }
     response.writeHead(404);
 		response.end('ページがみつかりません！');
   });
+
+  cache.clean(Date.now());
 }).listen(8080);

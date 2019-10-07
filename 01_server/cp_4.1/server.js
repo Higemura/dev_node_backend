@@ -4,10 +4,6 @@ const http = require('http');
 const path = require('path');
 const fs = require('fs');
 
-const head = {
-  'Content-Type': 'text/html; charset=utf-8'
-}
-
 const mimeTypes = {
   '.js': 'text/javascript',
   '.html': 'text/html',
@@ -41,9 +37,10 @@ http.createServer((request, response) => {
   fs.exists(f, (exists) => {
     if (exists) {
       const headers = { 'Content-Type': `${mimeTypes[path.extname(f)]}; charset=utf-8` };
-      if (cache[f]) {
+      if (cache.store[f]) {
+        console.log('cache ' + f);
         response.writeHead(200, headers);
-        response.end(cache[f].content);
+        response.end(cache.store[f].content);
         return;
       }
 
@@ -60,7 +57,7 @@ http.createServer((request, response) => {
       fs.stat(f, (error, stats) => {
         if (stats.size < cache.maxSize) {
           let bufferOffset = 0;
-          cache[f] = {content: new Buffer.alloc(stats.size), timestamp: Date.now() };
+          cache.store[f] = {content: new Buffer.alloc(stats.size), timestamp: Date.now() };
           s.on('data', (data) => {
             data.copy(cache.store[f].content, bufferOffset);
             bufferOffset += data.length;
